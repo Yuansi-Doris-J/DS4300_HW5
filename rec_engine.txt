@@ -1,0 +1,28 @@
+// Song Recommendation Engine
+// 1. Finds input song
+// 2. Traverses SIMILAR_TO edges 
+// 3. Filter out any songs by the same artist
+
+// example: The Modern Age by The Strokes / and Begin To Hope by Regina Spektor
+MATCH (input:Track {name: 'Begin to Hope'})
+// get artist of original song
+OPTIONAL MATCH (input)-[:PERFORMED_BY]->(inputArtist:Artist)
+WITH input, collect(DISTINCT inputArtist.name) AS originalArtists
+MATCH (input)-[r:SIMILAR_TO]-(rec:Track)
+
+// exclude any artist on the recommended track was also on the input track
+OPTIONAL MATCH (rec)-[:PERFORMED_BY]->(recArtist:Artist)
+WITH input, rec, r, originalArtists, collect(DISTINCT recArtist.name) AS recArtists, 
+     [a IN collect(DISTINCT recArtist.name) WHERE a IN originalArtists] AS overlappingArtists
+WHERE size(overlappingArtists) = 0
+
+// get genre
+OPTIONAL MATCH (rec)-[:BELONGS_TO]->(g:Genre)
+
+RETURN rec.name AS recommended_song,
+       recArtists AS artists,
+       g.name AS genre,
+       rec.popularity AS popularity,
+       round(r.score * 1000) / 1000.0 AS cosine_similarity
+ORDER BY cosine_similarity DESC
+LIMIT 10;

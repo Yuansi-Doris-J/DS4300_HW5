@@ -1,0 +1,11 @@
+recommended_song, artists, genre, popularity, cosine_similarity
+"Vente en Mi Boca", ["Ultrasonicas"], "garage", 36, 0.992
+"Ramen Waitress", ["High Sunn"], "garage", 62, 0.989
+"I Never Wanted Love", ["Shannon  The Clams"], "garage", 32, 0.988
+"2516", ["Luna Li"], "garage", 63, 0.987
+"Dance Little Liar", ["Arctic Monkeys"], "garage", 61, 0.98
+"Research", ["CASTLEBEAT"], "garage", 54, 0.98
+"The Physical Attractions", ["The Symposium"], "garage", 58, 0.979
+"Thats Where Youre Wrong", ["Arctic Monkeys"], "garage", 55, 0.976
+"Love is a Laserquest", ["Arctic Monkeys"], "garage", 65, 0.971
+"Parking Lots", ["Plums"], "garage", 61, 0.97
