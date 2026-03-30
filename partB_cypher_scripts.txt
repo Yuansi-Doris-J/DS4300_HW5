@@ -1,0 +1,122 @@
+// ============================================
+// DS4300 HW5 - Part B: Graph Database Construction
+// Member B: Database Specialist
+// Platform: Neo4j AuraDB Free
+// Data Source: https://raw.githubusercontent.com/Yuansi-Doris-J/DS4300_HW5/main/spotify_neo4j_ready.csv
+// ============================================
+
+// GRAPH DATA MODEL
+// Node Types:
+//   - Track     : Each song with audio feature properties
+//   - Artist    : Each unique artist name
+//   - Album     : Each unique album name
+//   - Genre     : Each unique music genre (50 total)
+//
+// Relationship Types:
+//   - (Track)-[:PERFORMED_BY]->(Artist)
+//   - (Track)-[:PART_OF]->(Album)
+//   - (Track)-[:BELONGS_TO]->(Genre)
+//   - (Track)-[:SIMILAR_TO]->(Track)
+
+// Steo1: Create Constraints, prevents duplicate nodes, auto-creates indexes
+
+CREATE CONSTRAINT FOR (t:Track) REQUIRE t.track_id IS UNIQUE;
+CREATE CONSTRAINT FOR (a:Artist) REQUIRE a.name IS UNIQUE;
+CREATE CONSTRAINT FOR (al:Album) REQUIRE al.name IS UNIQUE;
+CREATE CONSTRAINT FOR (g:Genre) REQUIRE g.name IS UNIQUE;
+
+// STEP 2: Import Track Nodes
+// Result: 13,431 Track nodes created
+
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/Yuansi-Doris-J/DS4300_HW5/main/spotify_neo4j_ready.csv' AS row
+CREATE (t:Track {
+    track_id: row.track_id,
+    name: COALESCE(row.track_name, 'Unknown'),
+    popularity: toInteger(COALESCE(row.popularity, '0')),
+    duration_ms: toInteger(COALESCE(row.duration_ms, '0')),
+    explicit: toBoolean(COALESCE(row.explicit, 'false')),
+    danceability: toFloat(COALESCE(row.danceability, '0')),
+    energy: toFloat(COALESCE(row.energy, '0')),
+    acousticness: toFloat(COALESCE(row.acousticness, '0')),
+    valence: toFloat(COALESCE(row.valence, '0')),
+    tempo: toFloat(COALESCE(row.tempo, '0')),
+    loudness: toFloat(COALESCE(row.loudness, '0')),
+    speechiness: toFloat(COALESCE(row.speechiness, '0')),
+    instrumentalness: toFloat(COALESCE(row.instrumentalness, '0')),
+    liveness: toFloat(COALESCE(row.liveness, '0')),
+    key: toInteger(COALESCE(row.key, '-1')),
+    mode: toInteger(COALESCE(row.mode, '0')),
+    track_genre: COALESCE(row.track_genre, 'Unknown')
+});
+
+// STEP 3: Create Genre Nodes + BELONGS_TO Relationships
+// Result: 50 Genre nodes, 13,431 BELONGS_TO relationships
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/Yuansi-Doris-J/DS4300_HW5/main/spotify_neo4j_ready.csv' AS row
+WITH row WHERE row.track_genre IS NOT NULL AND row.track_genre <> ''
+MERGE (g:Genre {name: row.track_genre})
+WITH row, g
+MATCH (t:Track {track_id: row.track_id})
+MERGE (t)-[:BELONGS_TO]->(g);
+
+// STEP 4: Create Artist Nodes + PERFORMED_BY Relationships
+// Note: artists field uses ';' as separator for multiple artists
+// Result: 7,199 Artist nodes, 18,781 PERFORMED_BY relationships
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/Yuansi-Doris-J/DS4300_HW5/main/spotify_neo4j_ready.csv' AS row
+WITH row, split(row.artists, ';') AS artists_list
+UNWIND artists_list AS artist_name
+WITH row, trim(artist_name) AS clean_artist
+WHERE clean_artist <> '' AND clean_artist <> 'null'
+MERGE (a:Artist {name: clean_artist})
+WITH row, a
+MATCH (t:Track {track_id: row.track_id})
+MERGE (t)-[:PERFORMED_BY]->(a);
+
+// STEP 5: Create Album Nodes + PART_OF Relationships
+// Result: 8,853 Album nodes, 13,431 PART_OF relationships
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/Yuansi-Doris-J/DS4300_HW5/main/spotify_neo4j_ready.csv' AS row
+WITH row, COALESCE(row.album_name, 'Unknown') AS album_name_clean
+WHERE album_name_clean <> '' AND album_name_clean <> 'null'
+MERGE (al:Album {name: album_name_clean})
+WITH row, al
+MATCH (t:Track {track_id: row.track_id})
+MERGE (t)-[:PART_OF]->(al);
+
+// STEP 6: Create SIMILAR_TO Relationships
+// Similarity Metric: Two tracks are similar if they share the same Genre AND:
+//   - abs(energy difference)      < 0.1
+//   - abs(valence difference)     < 0.1
+//   - abs(acousticness difference)< 0.1
+//   - abs(tempo difference)       < 20 BPM
+//
+// Note: t1.track_id < t2.track_id ensures each pair is only compared once
+// Note: Restricting to same Genre avoids ~90M cross-genre comparisons
+// Result: 55,620 SIMILAR_TO relationships
+
+MATCH (t1:Track)-[:BELONGS_TO]->(g:Genre)<-[:BELONGS_TO]-(t2:Track)
+WHERE t1.track_id < t2.track_id
+  AND abs(t1.energy - t2.energy) < 0.1
+  AND abs(t1.valence - t2.valence) < 0.1
+  AND abs(t1.acousticness - t2.acousticness) < 0.1
+  AND abs(t1.tempo - t2.tempo) < 20
+MERGE (t1)-[:SIMILAR_TO]->(t2);
+
+// STEP 7: Verify Results
+
+// Check node counts
+MATCH (n)
+RETURN labels(n) AS NodeType, COUNT(n) AS Count
+ORDER BY Count DESC;
+// Expected: Track=13431, Album=8853, Artist=7199, Genre=50
+// Total Nodes: 29,533
+
+// Check relationship counts
+MATCH ()-[r]->()
+RETURN type(r) AS RelationshipType, COUNT(r) AS Count
+ORDER BY Count DESC;
+// Expected: SIMILAR_TO=55620, PERFORMED_BY=18781, BELONGS_TO=13431, PART_OF=13431
+// Total Relationships: 101,263
+
+// Verify The Strokes songs are in the database
+MATCH (a:Artist {name: 'The Strokes'})<-[:PERFORMED_BY]-(t:Track)
+RETURN t.name, t.energy, t.valence, t.tempo
+LIMIT 10;
