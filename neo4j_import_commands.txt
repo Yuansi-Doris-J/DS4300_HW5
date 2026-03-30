@@ -1,0 +1,124 @@
+// ============================================
+// STEP 1: Drop existing constraints (if any)
+// ============================================
+DROP CONSTRAINT ON (t:Track) ASSERT t.track_id IS UNIQUE;
+DROP CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE;
+DROP CONSTRAINT ON (a:Artist) ASSERT a.name IS UNIQUE;
+DROP CONSTRAINT ON (al:Album) ASSERT al.name IS UNIQUE;
+
+// ============================================
+// STEP 2: Create constraints (this also creates indexes)
+// ============================================
+CREATE CONSTRAINT ON (t:Track) ASSERT t.track_id IS UNIQUE;
+CREATE CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE;
+CREATE CONSTRAINT ON (a:Artist) ASSERT a.name IS UNIQUE;
+CREATE CONSTRAINT ON (al:Album) ASSERT al.name IS UNIQUE;
+
+// ============================================
+// STEP 3: Import Track nodes
+// ============================================
+:auto USING PERIODIC COMMIT 1000
+LOAD CSV WITH HEADERS FROM 'file:///spotify_neo4j_ready.csv' AS row
+CREATE (t:Track {
+    track_id: row.track_id,
+    name: COALESCE(row.track_name, 'Unknown'),
+    artists: COALESCE(row.artists, 'Unknown'),
+    album_name: COALESCE(row.album_name, 'Unknown'),
+    popularity: toInteger(COALESCE(row.popularity, '0')),
+    duration_ms: toInteger(COALESCE(row.duration_ms, '0')),
+    explicit: toBoolean(COALESCE(row.explicit, 'false')),
+    danceability: toFloat(COALESCE(row.danceability, '0')),
+    energy: toFloat(COALESCE(row.energy, '0')),
+    acousticness: toFloat(COALESCE(row.acousticness, '0')),
+    valence: toFloat(COALESCE(row.valence, '0')),
+    tempo: toFloat(COALESCE(row.tempo, '0')),
+    loudness: toFloat(COALESCE(row.loudness, '0')),
+    speechiness: toFloat(COALESCE(row.speechiness, '0')),
+    instrumentalness: toFloat(COALESCE(row.instrumentalness, '0')),
+    liveness: toFloat(COALESCE(row.liveness, '0')),
+    key: toInteger(COALESCE(row.key, '-1')),
+    mode: toInteger(COALESCE(row.mode, '0')),
+    track_genre: COALESCE(row.track_genre, 'Unknown')
+});
+
+// ============================================
+// STEP 4: Create Genre nodes and BELONGS_TO relationships
+// ============================================
+:auto USING PERIODIC COMMIT 1000
+LOAD CSV WITH HEADERS FROM 'file:///spotify_neo4j_ready.csv' AS row
+WITH row
+WHERE row.track_genre IS NOT NULL AND row.track_genre <> '' AND row.track_genre <> 'null'
+MERGE (g:Genre {name: row.track_genre})
+WITH row, g
+MATCH (t:Track {track_id: row.track_id})
+MERGE (t)-[:BELONGS_TO]->(g);
+
+// ============================================
+// STEP 5: Create Artist nodes and PERFORMED_BY relationships
+// ============================================
+:auto USING PERIODIC COMMIT 1000
+LOAD CSV WITH HEADERS FROM 'file:///spotify_neo4j_ready.csv' AS row
+WITH row
+WHERE row.artists IS NOT NULL AND row.artists <> '' AND row.artists <> 'null'
+WITH row, split(row.artists, ';') AS artists_list
+UNWIND artists_list AS artist_name
+WITH row, trim(artist_name) AS clean_artist
+WHERE clean_artist <> '' AND clean_artist <> 'null' AND clean_artist <> 'nan'
+MERGE (a:Artist {name: clean_artist})
+WITH row, a
+MATCH (t:Track {track_id: row.track_id})
+MERGE (t)-[:PERFORMED_BY]->(a);
+
+// ============================================
+// STEP 6: Create Album nodes and PART_OF relationships
+// ============================================
+:auto USING PERIODIC COMMIT 1000
+LOAD CSV WITH HEADERS FROM 'file:///spotify_neo4j_ready.csv' AS row
+WITH row, COALESCE(row.album_name, 'Unknown Album') AS album_name_clean
+WHERE album_name_clean <> '' AND album_name_clean <> 'null' AND album_name_clean <> 'nan'
+MERGE (al:Album {name: album_name_clean})
+WITH row, al
+MATCH (t:Track {track_id: row.track_id})
+MERGE (t)-[:PART_OF]->(al);
+
+// ============================================
+// STEP 7: Create additional indexes (Neo4j 3.5 compatible)
+// ============================================
+// Note: Artist(name), Genre(name), Album(name) already have indexes from constraints
+// We only create indexes for Track properties that are frequently queried
+
+// Create index for Track.name (useful for searching by song name)
+CREATE INDEX ON :Track(name);
+
+// Create index for Track.popularity (useful for sorting by popularity)
+CREATE INDEX ON :Track(popularity);
+
+// Create indexes for analytical queries
+CREATE INDEX ON :Track(danceability);
+CREATE INDEX ON :Track(energy);
+CREATE INDEX ON :Track(acousticness);
+CREATE INDEX ON :Track(valence);
+CREATE INDEX ON :Track(tempo);
+
+// ============================================
+// STEP 8: Verify import results
+// ============================================
+
+// Check node counts
+MATCH (n) 
+RETURN labels(n) AS NodeType, COUNT(n) AS Count
+ORDER BY Count DESC;
+
+// Check relationship counts
+MATCH ()-[r]->() 
+RETURN type(r) AS RelationshipType, COUNT(r) AS Count
+ORDER BY Count DESC;
+
+// Check sample data
+MATCH (t:Track)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN t.name AS TrackName, t.artists AS Artists, g.name AS Genre, al.name AS Album
+LIMIT 10;
+
+// Check index status
+:schema

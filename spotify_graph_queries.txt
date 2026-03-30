@@ -1,0 +1,153 @@
+Neo4j Graph Query Examples - Spotify Music Graph
+
+1. Basic Graph Query - View Complete Graph
+
+// Query 1: View overview of the entire graph (limit 100 nodes)
+MATCH (n)
+RETURN n
+LIMIT 100;
+
+2. View Node Type Distribution
+
+// Query 2: Count nodes by type
+MATCH (n)
+RETURN labels(n) AS NodeType, COUNT(n) AS Count
+ORDER BY Count DESC;
+
+3. View Relationship Type Distribution
+
+// Query 3: Count relationships by type
+MATCH ()-[r]->()
+RETURN type(r) AS RelationshipType, COUNT(r) AS Count
+ORDER BY Count DESC;
+
+4. View Complete Graph for a Specific Genre
+
+// Query 4: View complete graph for Acoustic genre (nodes and relationships)
+MATCH (g:Genre {name: 'acoustic'})<-[:BELONGS_TO]-(t:Track)-[:PERFORMED_BY]->(a:Artist)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN g, t, a, al
+LIMIT 50;
+
+5. View Network of High Popularity Songs
+
+// Query 5: View songs with popularity > 80 and their connections
+MATCH (t:Track)
+WHERE t.popularity > 80
+MATCH (t)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PERFORMED_BY]->(a:Artist)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN t, g, a, al
+LIMIT 30;
+
+6. View Music Network for a Specific Artist
+
+// Query 6: View all songs, genres, and albums for Jason Mraz
+MATCH (a:Artist {name: 'Jason Mraz'})<-[:PERFORMED_BY]-(t:Track)
+OPTIONAL MATCH (t)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN a, t, g, al
+LIMIT 50;
+
+7. View Artist Collaborations
+
+// Query 7: View artists who collaborated on the same song
+MATCH (a1:Artist)-[:PERFORMED_BY]-(t:Track)-[:PERFORMED_BY]-(a2:Artist)
+WHERE a1.name < a2.name
+WITH a1, a2, COUNT(DISTINCT t) AS collaborations
+RETURN a1, a2, collaborations
+ORDER BY collaborations DESC
+LIMIT 10;
+
+8. View Complete Album Information
+
+// Query 8: View all songs and artists for album "Comedy"
+MATCH (al:Album {name: 'Comedy'})<-[:PART_OF]-(t:Track)
+OPTIONAL MATCH (t)-[:PERFORMED_BY]->(a:Artist)
+OPTIONAL MATCH (t)-[:BELONGS_TO]->(g:Genre)
+RETURN al, t, a, g
+LIMIT 30;
+
+9. View Relationships Between Genres (Through Shared Artists)
+
+// Query 9: View artists spanning multiple genres
+MATCH (a:Artist)-[:PERFORMED_BY]-(t1:Track)-[:BELONGS_TO]->(g1:Genre)
+MATCH (a)-[:PERFORMED_BY]-(t2:Track)-[:BELONGS_TO]->(g2:Genre)
+WHERE g1.name < g2.name
+WITH a, g1, g2, COUNT(DISTINCT t1) + COUNT(DISTINCT t2) AS connections
+RETURN a, g1, g2, connections
+ORDER BY connections DESC
+LIMIT 20;
+
+10. View High Energy, High Danceability Song Clusters
+
+// Query 10: View songs with high energy (>0.8) and high danceability (>0.7)
+MATCH (t:Track)
+WHERE t.energy > 0.8 AND t.danceability > 0.7
+MATCH (t)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PERFORMED_BY]->(a:Artist)
+RETURN t, g, a
+LIMIT 30;
+
+11. View Similar Songs (Based on Audio Features)
+
+// Query 11: Find songs similar to "Comedy"
+MATCH (target:Track {name: 'Comedy'})
+MATCH (other:Track)
+WHERE other.track_id <> target.track_id
+  AND abs(other.acousticness - target.acousticness) < 0.1
+  AND abs(other.energy - target.energy) < 0.1
+WITH other, target
+MATCH (other)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (other)-[:PERFORMED_BY]->(a:Artist)
+RETURN target, other, g, a
+LIMIT 20;
+
+12. View Genre Popularity Ranking
+
+// Query 12: View average popularity by genre
+MATCH (g:Genre)<-[:BELONGS_TO]-(t:Track)
+RETURN g, AVG(t.popularity) AS avg_popularity, COUNT(t) AS track_count
+ORDER BY avg_popularity DESC
+LIMIT 10;
+
+13. View Popular Artist Network
+
+// Query 13: View top 5 artists with most songs and their complete works
+MATCH (a:Artist)
+WHERE EXISTS((a)-[:PERFORMED_BY]-())
+WITH a, SIZE((a)-[:PERFORMED_BY]-()) AS track_count
+ORDER BY track_count DESC
+LIMIT 5
+MATCH (a)-[:PERFORMED_BY]-(t:Track)
+OPTIONAL MATCH (t)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN a, t, g, al
+LIMIT 50;
+
+14. View Complete Path Graph
+
+// Query 14: View complete path: Artist -> Song -> Genre -> Album
+MATCH path = (a:Artist)-[:PERFORMED_BY]->(t:Track)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN path, al
+LIMIT 30;
+
+15. View All Relationships for a Specific Artist
+
+// Query 15: View all relationships for Jason Mraz (including songs, genres, albums)
+MATCH (a:Artist {name: 'Jason Mraz'})
+OPTIONAL MATCH (a)-[:PERFORMED_BY]-(t:Track)
+OPTIONAL MATCH (t)-[:BELONGS_TO]->(g:Genre)
+OPTIONAL MATCH (t)-[:PART_OF]->(al:Album)
+RETURN a, t, g, al
+LIMIT 50;
+
+Visualization in Neo4j Browser
+
+After executing the queries above, results will be displayed graphically in Neo4j Browser. You can:
+
+1. Click on nodes - View node properties
+2. Drag nodes - Adjust layout
+3. Expand nodes - Click the + sign next to nodes to see more connections
+4. Use styling - Different node types are displayed with different colors
